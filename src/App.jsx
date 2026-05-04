@@ -86,12 +86,12 @@ const border = () => {
 
 const S = {
   banner: {
-    fill: fill(XC.turquoise),
+    fill: fill(XC.white),
     font: { bold: true, size: 20, color: { argb: XC.navy }, name: XFONT },
     alignment: { horizontal: 'left', vertical: 'middle', indent: 2 },
   },
   bannerRight: {
-    fill: fill(XC.turquoise),
+    fill: fill(XC.white),
     font: { size: 10, color: { argb: XC.navy }, name: XFONT },
     alignment: { horizontal: 'right', vertical: 'middle', indent: 2 },
   },
@@ -258,10 +258,10 @@ async function loadLogoBuffer() {
   return await res.arrayBuffer();
 }
 
-// Image-anchor info: logo is 105×39 px; banner row is 40pt (~53px).
-// Place a small inset over A1 so it floats on the turquoise banner.
+// Logo is 105×39 px; row 1 is 40pt (~53px) and column A is 22 chars (~155px).
+// col=0.28 puts logo ~20px further right than the previous 0.15 anchor.
 const LOGO_EXT = { width: 105, height: 39 };
-const LOGO_TL = { col: 0.15, row: 0.18 };
+const LOGO_TL = { col: 0.28, row: 0.18 };
 
 function setRowValues(ws, rowIdx, values) {
   const row = ws.getRow(rowIdx);

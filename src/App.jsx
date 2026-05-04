@@ -1,18 +1,9 @@
 // ============================================================================
-// Nijver Order Export Converter — REFERENTIE-IMPLEMENTATIE
+// Nijver Order Export Converter
 // ============================================================================
-// Deze file is GETEST en WERKT. Kopieer 'm letterlijk naar src/App.jsx.
-//
-// Validatie (gedraaid in Node.js met de echte voorbeeld-CSVs):
-//   - Tab "Uitgangspunten" wordt correct gevuld (10 kolommen, 2 complexen + totaal)
-//   - Tab "Prijs" toont budget per categorie per complex (Dak/Gevel/etc)
-//   - Grand total = € 2.109.208,54 (matcht CSV totalPrice som)
-//   - Alle cell-styles (turquoise banner, navy headers, zebra rijen) verschijnen
-//     correct bij openen in openpyxl én Microsoft Excel
-//
 // Tech:
 //   - React 18+ functionele componenten
-//   - xlsx-js-style voor Excel-generatie met styling support
+//   - ExcelJS voor Excel-generatie met styling én image-embedding
 //   - papaparse voor CSV-parsing
 //   - lucide-react voor iconen
 //   - Inline styles (geen CSS framework)
@@ -20,7 +11,7 @@
 
 import React, { useState, useMemo } from 'react';
 import Papa from 'papaparse';
-import XLSX from 'xlsx-js-style';
+import ExcelJS from 'exceljs';
 import {
   Upload, FileCheck2, Download, AlertCircle, X,
   Building2, Users, Euro, RefreshCw, ArrowRight,
@@ -72,8 +63,7 @@ const FONT_UI = "'Manrope', -apple-system, sans-serif";
 const FONT_MONO = "'JetBrains Mono', 'SF Mono', monospace";
 
 // ============================================================================
-// EXCEL CELSTIJLEN
-// ARGB-formaat met FF-prefix (FF5DD3C5 = volledig opaque turquoise)
+// EXCEL CELSTIJLEN (ExcelJS — ARGB met FF-prefix)
 // ============================================================================
 const XC = {
   turquoise: 'FF5DD3C5',
@@ -85,126 +75,131 @@ const XC = {
   altRow: 'FFF1F5F9',
   borderGray: 'FFE2E8F0',
 };
-const XFONT = 'Arial'; // Excel-font: Arial (universeel) — NIET Manrope
+const XFONT = 'Arial';
+const NUMFMT_EURO = '€ #,##0.00;[Red]-€ #,##0.00;-';
 
-const BORDER = {
-  top: { style: 'thin', color: { rgb: XC.borderGray } },
-  bottom: { style: 'thin', color: { rgb: XC.borderGray } },
-  left: { style: 'thin', color: { rgb: XC.borderGray } },
-  right: { style: 'thin', color: { rgb: XC.borderGray } },
+const fill = (argb) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
+const border = () => {
+  const side = { style: 'thin', color: { argb: XC.borderGray } };
+  return { top: side, bottom: side, left: side, right: side };
 };
 
 const S = {
   banner: {
-    fill: { patternType: 'solid', fgColor: { rgb: XC.turquoise } },
-    font: { bold: true, sz: 20, color: { rgb: XC.navy }, name: XFONT },
-    alignment: { horizontal: 'left', vertical: 'center', indent: 2 },
+    fill: fill(XC.turquoise),
+    font: { bold: true, size: 20, color: { argb: XC.navy }, name: XFONT },
+    alignment: { horizontal: 'left', vertical: 'middle', indent: 2 },
   },
   bannerRight: {
-    fill: { patternType: 'solid', fgColor: { rgb: XC.turquoise } },
-    font: { sz: 10, color: { rgb: XC.navy }, name: XFONT },
-    alignment: { horizontal: 'right', vertical: 'center', indent: 2 },
+    fill: fill(XC.turquoise),
+    font: { size: 10, color: { argb: XC.navy }, name: XFONT },
+    alignment: { horizontal: 'right', vertical: 'middle', indent: 2 },
   },
   subtitle: {
-    fill: { patternType: 'solid', fgColor: { rgb: XC.navy } },
-    font: { sz: 11, color: { rgb: XC.white }, name: XFONT },
-    alignment: { horizontal: 'left', vertical: 'center', indent: 2 },
+    fill: fill(XC.navy),
+    font: { size: 11, color: { argb: XC.white }, name: XFONT },
+    alignment: { horizontal: 'left', vertical: 'middle', indent: 2 },
   },
   infoLabel: {
-    fill: { patternType: 'solid', fgColor: { rgb: XC.altRow } },
-    font: { bold: true, sz: 10, color: { rgb: XC.navy }, name: XFONT },
-    alignment: { horizontal: 'left', vertical: 'center', indent: 1 },
-    border: BORDER,
+    fill: fill(XC.altRow),
+    font: { bold: true, size: 10, color: { argb: XC.navy }, name: XFONT },
+    alignment: { horizontal: 'left', vertical: 'middle', indent: 1 },
+    border: border(),
   },
   infoValue: {
-    fill: { patternType: 'solid', fgColor: { rgb: XC.white } },
-    font: { sz: 11, color: { rgb: XC.navy }, name: XFONT },
-    alignment: { horizontal: 'left', vertical: 'center', indent: 1 },
-    border: BORDER,
+    fill: fill(XC.white),
+    font: { size: 11, color: { argb: XC.navy }, name: XFONT },
+    alignment: { horizontal: 'left', vertical: 'middle', indent: 1 },
+    border: border(),
   },
   sectionTitle: {
-    fill: { patternType: 'solid', fgColor: { rgb: XC.navy } },
-    font: { bold: true, sz: 12, color: { rgb: XC.turquoise }, name: XFONT },
-    alignment: { horizontal: 'left', vertical: 'center', indent: 2 },
+    fill: fill(XC.navy),
+    font: { bold: true, size: 12, color: { argb: XC.turquoise }, name: XFONT },
+    alignment: { horizontal: 'left', vertical: 'middle', indent: 2 },
   },
   tableHeader: {
-    fill: { patternType: 'solid', fgColor: { rgb: XC.navy } },
-    font: { bold: true, sz: 10, color: { rgb: XC.white }, name: XFONT },
-    alignment: { horizontal: 'left', vertical: 'center', wrapText: true, indent: 1 },
-    border: BORDER,
+    fill: fill(XC.navy),
+    font: { bold: true, size: 10, color: { argb: XC.white }, name: XFONT },
+    alignment: { horizontal: 'left', vertical: 'middle', wrapText: true, indent: 1 },
+    border: border(),
   },
   cellText: {
-    fill: { patternType: 'solid', fgColor: { rgb: XC.white } },
-    font: { sz: 10, color: { rgb: XC.navy }, name: XFONT },
-    alignment: { horizontal: 'left', vertical: 'center', indent: 1 },
-    border: BORDER,
+    fill: fill(XC.white),
+    font: { size: 10, color: { argb: XC.navy }, name: XFONT },
+    alignment: { horizontal: 'left', vertical: 'middle', indent: 1 },
+    border: border(),
   },
   cellTextAlt: {
-    fill: { patternType: 'solid', fgColor: { rgb: XC.lightGray } },
-    font: { sz: 10, color: { rgb: XC.navy }, name: XFONT },
-    alignment: { horizontal: 'left', vertical: 'center', indent: 1 },
-    border: BORDER,
+    fill: fill(XC.lightGray),
+    font: { size: 10, color: { argb: XC.navy }, name: XFONT },
+    alignment: { horizontal: 'left', vertical: 'middle', indent: 1 },
+    border: border(),
   },
   cellNum: {
-    fill: { patternType: 'solid', fgColor: { rgb: XC.white } },
-    font: { sz: 10, color: { rgb: XC.navy }, name: XFONT },
-    alignment: { horizontal: 'right', vertical: 'center', indent: 1 },
-    border: BORDER,
-    numFmt: '€ #,##0.00;[Red]-€ #,##0.00;-',
+    fill: fill(XC.white),
+    font: { size: 10, color: { argb: XC.navy }, name: XFONT },
+    alignment: { horizontal: 'right', vertical: 'middle', indent: 1 },
+    border: border(),
+    numFmt: NUMFMT_EURO,
   },
   cellNumAlt: {
-    fill: { patternType: 'solid', fgColor: { rgb: XC.lightGray } },
-    font: { sz: 10, color: { rgb: XC.navy }, name: XFONT },
-    alignment: { horizontal: 'right', vertical: 'center', indent: 1 },
-    border: BORDER,
-    numFmt: '€ #,##0.00;[Red]-€ #,##0.00;-',
+    fill: fill(XC.lightGray),
+    font: { size: 10, color: { argb: XC.navy }, name: XFONT },
+    alignment: { horizontal: 'right', vertical: 'middle', indent: 1 },
+    border: border(),
+    numFmt: NUMFMT_EURO,
   },
   cellInt: {
-    fill: { patternType: 'solid', fgColor: { rgb: XC.white } },
-    font: { sz: 10, color: { rgb: XC.navy }, name: XFONT },
-    alignment: { horizontal: 'right', vertical: 'center', indent: 1 },
-    border: BORDER,
+    fill: fill(XC.white),
+    font: { size: 10, color: { argb: XC.navy }, name: XFONT },
+    alignment: { horizontal: 'right', vertical: 'middle', indent: 1 },
+    border: border(),
     numFmt: '0',
   },
   cellIntAlt: {
-    fill: { patternType: 'solid', fgColor: { rgb: XC.lightGray } },
-    font: { sz: 10, color: { rgb: XC.navy }, name: XFONT },
-    alignment: { horizontal: 'right', vertical: 'center', indent: 1 },
-    border: BORDER,
+    fill: fill(XC.lightGray),
+    font: { size: 10, color: { argb: XC.navy }, name: XFONT },
+    alignment: { horizontal: 'right', vertical: 'middle', indent: 1 },
+    border: border(),
     numFmt: '0',
   },
   complexHeader: {
-    fill: { patternType: 'solid', fgColor: { rgb: XC.turquoiseLight } },
-    font: { bold: true, sz: 11, color: { rgb: XC.turquoiseDeep }, name: XFONT },
-    alignment: { horizontal: 'left', vertical: 'center', indent: 1 },
-    border: BORDER,
+    fill: fill(XC.turquoiseLight),
+    font: { bold: true, size: 11, color: { argb: XC.turquoiseDeep }, name: XFONT },
+    alignment: { horizontal: 'left', vertical: 'middle', indent: 1 },
+    border: border(),
   },
   totalText: {
-    fill: { patternType: 'solid', fgColor: { rgb: XC.turquoise } },
-    font: { bold: true, sz: 12, color: { rgb: XC.navy }, name: XFONT },
-    alignment: { horizontal: 'left', vertical: 'center', indent: 1 },
-    border: BORDER,
+    fill: fill(XC.turquoise),
+    font: { bold: true, size: 12, color: { argb: XC.navy }, name: XFONT },
+    alignment: { horizontal: 'left', vertical: 'middle', indent: 1 },
+    border: border(),
   },
   totalNum: {
-    fill: { patternType: 'solid', fgColor: { rgb: XC.turquoise } },
-    font: { bold: true, sz: 12, color: { rgb: XC.navy }, name: XFONT },
-    alignment: { horizontal: 'right', vertical: 'center', indent: 1 },
-    border: BORDER,
-    numFmt: '€ #,##0.00;[Red]-€ #,##0.00;-',
+    fill: fill(XC.turquoise),
+    font: { bold: true, size: 12, color: { argb: XC.navy }, name: XFONT },
+    alignment: { horizontal: 'right', vertical: 'middle', indent: 1 },
+    border: border(),
+    numFmt: NUMFMT_EURO,
   },
   totalInt: {
-    fill: { patternType: 'solid', fgColor: { rgb: XC.turquoise } },
-    font: { bold: true, sz: 12, color: { rgb: XC.navy }, name: XFONT },
-    alignment: { horizontal: 'right', vertical: 'center', indent: 1 },
-    border: BORDER,
+    fill: fill(XC.turquoise),
+    font: { bold: true, size: 12, color: { argb: XC.navy }, name: XFONT },
+    alignment: { horizontal: 'right', vertical: 'middle', indent: 1 },
+    border: border(),
     numFmt: '0',
   },
 };
 
-// Helper: pas style toe op cel; maakt lege cel als 'ie nog niet bestaat
-function styleCell(ws, addr, style) {
-  if (!ws[addr]) ws[addr] = { t: 's', v: '' };
-  ws[addr].s = style;
+function applyStyle(cell, style) {
+  if (style.fill) cell.fill = style.fill;
+  if (style.font) cell.font = style.font;
+  if (style.alignment) cell.alignment = style.alignment;
+  if (style.border) cell.border = style.border;
+  if (style.numFmt) cell.numFmt = style.numFmt;
+}
+function styleRange(ws, r, c0, c1, style) {
+  for (let c = c0; c <= c1; c++) applyStyle(ws.getRow(r).getCell(c), style);
 }
 
 // ============================================================================
@@ -257,7 +252,23 @@ const underscoreToSpace = (v) => !v ? '' : String(v).replace(/_/g, ' ');
 // ============================================================================
 // buildWorkbook — genereert beide bladen (Uitgangspunten + Prijs)
 // ============================================================================
-function buildWorkbook({ project, complexes, corporationName }) {
+async function loadLogoBuffer() {
+  const res = await fetch('/nijver-logo.jpg');
+  if (!res.ok) throw new Error(`Logo laden mislukt (${res.status})`);
+  return await res.arrayBuffer();
+}
+
+// Image-anchor info: logo is 105×39 px; banner row is 40pt (~53px).
+// Place a small inset over A1 so it floats on the turquoise banner.
+const LOGO_EXT = { width: 105, height: 39 };
+const LOGO_TL = { col: 0.15, row: 0.18 };
+
+function setRowValues(ws, rowIdx, values) {
+  const row = ws.getRow(rowIdx);
+  values.forEach((v, i) => { row.getCell(i + 1).value = v; });
+}
+
+async function buildWorkbook({ project, complexes, corporationName }) {
   const orderCode = project.project_id || '';
   const authorName = [project['author.firstName'], project['author.lastName']]
     .filter(Boolean).join(' ').trim();
@@ -265,41 +276,78 @@ function buildWorkbook({ project, complexes, corporationName }) {
   const today = formatDateDutch();
   const corpName = corporationName || project.externalCorporationId || '';
 
-  const wb = XLSX.utils.book_new();
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Nijver Order Export';
+  wb.created = new Date();
+
+  const logoBuffer = await loadLogoBuffer();
+  const logoId = wb.addImage({ buffer: logoBuffer, extension: 'jpeg' });
 
   // ============================================
   // BLAD 1: Uitgangspunten
   // ============================================
   const NCOLS_U = 10;
-  const uitRows = [
-    ['nijver', '', '', '', '', '', '', '', '', today],
-    ['Order Export — Uitgangspunten'],
-    [],
+  const wsUit = wb.addWorksheet('Uitgangspunten');
+  wsUit.columns = [
+    { width: 22 }, { width: 18 }, { width: 22 }, { width: 24 }, { width: 20 },
+    { width: 18 }, { width: 22 }, { width: 22 }, { width: 22 }, { width: 14 },
+  ];
+
+  // Row 1: banner (logo embedded, date right-aligned)
+  setRowValues(wsUit, 1, ['', '', '', '', '', '', '', '', '', today]);
+  wsUit.getRow(1).height = 40;
+  wsUit.mergeCells(1, 1, 1, NCOLS_U - 1);
+  styleRange(wsUit, 1, 1, NCOLS_U - 1, S.banner);
+  applyStyle(wsUit.getCell(1, NCOLS_U), S.bannerRight);
+  wsUit.addImage(logoId, { tl: LOGO_TL, ext: LOGO_EXT });
+
+  // Row 2: subtitle
+  setRowValues(wsUit, 2, ['Order Export — Uitgangspunten']);
+  wsUit.getRow(2).height = 24;
+  wsUit.mergeCells(2, 1, 2, NCOLS_U);
+  styleRange(wsUit, 2, 1, NCOLS_U, S.subtitle);
+
+  // Rows 4-7: info block
+  const infoRows = [
     ['Corporatie', corpName],
     ['Order code', orderCode],
     ['Order auteur', authorName],
     ['E-mail', authorEmail],
-    [],
-    ['Complexen in deze order'],
-    [
-      'Complex Code','Systematiek','Onderdeel van selectie','Meest voorkomend label',
-      'Ambitie voor complex','Asbest verwacht?','Keuzes badkamer',
-      'Keuzes keuken','Keuzes toilet','Aantal VHE',
-    ],
   ];
+  infoRows.forEach((vals, i) => {
+    const r = 4 + i;
+    setRowValues(wsUit, r, vals);
+    wsUit.mergeCells(r, 2, r, NCOLS_U);
+    applyStyle(wsUit.getCell(r, 1), S.infoLabel);
+    styleRange(wsUit, r, 2, NCOLS_U, S.infoValue);
+  });
 
+  // Row 9: section title
+  setRowValues(wsUit, 9, ['Complexen in deze order']);
+  wsUit.mergeCells(9, 1, 9, NCOLS_U);
+  styleRange(wsUit, 9, 1, NCOLS_U, S.sectionTitle);
+
+  // Row 10: table header
+  setRowValues(wsUit, 10, [
+    'Complex Code', 'Systematiek', 'Onderdeel van selectie', 'Meest voorkomend label',
+    'Ambitie voor complex', 'Asbest verwacht?', 'Keuzes badkamer',
+    'Keuzes keuken', 'Keuzes toilet', 'Aantal VHE',
+  ]);
+  wsUit.getRow(10).height = 32;
+  styleRange(wsUit, 10, 1, NCOLS_U, S.tableHeader);
+
+  // Data rows
   let totalVHE = 0;
-  for (const c of complexes) {
+  complexes.forEach((c, i) => {
+    const r = 11 + i;
     const complexCode = stripCorpSuffix(c.externalComplexId || c['calculation.item.complex']);
     const totalPrice = parseFloat(c['calculation.offer.totalPrice']) || 0;
     const pricePerAsset = parseFloat(c['calculation.offer.totalPricePerAsset']) || 0;
     const vhe = pricePerAsset > 0 ? Math.round(totalPrice / pricePerAsset) : 0;
     totalVHE += vhe;
     const strategyName = c['calculation.targetStrategyName'] || '';
-    const systematiek = strategyName
-      .replace(/^Breng\s+naar\s+(de\s+)?/i, '')
-      .trim() || strategyName;
-    uitRows.push([
+    const systematiek = strategyName.replace(/^Breng\s+naar\s+(de\s+)?/i, '').trim() || strategyName;
+    setRowValues(wsUit, r, [
       complexCode, systematiek, 'Yes', '—',
       c['calculation.targetEnergyLabel'] || '', '—',
       underscoreToSpace(c['calculation.item.bathroom']),
@@ -307,103 +355,94 @@ function buildWorkbook({ project, complexes, corporationName }) {
       underscoreToSpace(c['calculation.item.toilet']),
       vhe,
     ]);
-  }
-  uitRows.push(['Totaal', '', '', '', '', '', '', '', '', totalVHE]);
-
-  const wsUit = XLSX.utils.aoa_to_sheet(uitRows);
-  wsUit['!cols'] = [
-    { wch: 22 }, { wch: 18 }, { wch: 22 }, { wch: 24 }, { wch: 20 },
-    { wch: 18 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 14 },
-  ];
-  wsUit['!rows'] = [];
-  wsUit['!rows'][0] = { hpt: 40 };
-  wsUit['!rows'][1] = { hpt: 24 };
-  wsUit['!rows'][9] = { hpt: 32 };
-  wsUit['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: NCOLS_U - 2 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: NCOLS_U - 1 } },
-    { s: { r: 3, c: 1 }, e: { r: 3, c: NCOLS_U - 1 } },
-    { s: { r: 4, c: 1 }, e: { r: 4, c: NCOLS_U - 1 } },
-    { s: { r: 5, c: 1 }, e: { r: 5, c: NCOLS_U - 1 } },
-    { s: { r: 6, c: 1 }, e: { r: 6, c: NCOLS_U - 1 } },
-    { s: { r: 8, c: 0 }, e: { r: 8, c: NCOLS_U - 1 } },
-  ];
-  wsUit['!freeze'] = { xSplit: 0, ySplit: 10 };
-
-  // Apply styles
-  for (let c = 0; c < NCOLS_U - 1; c++)
-    styleCell(wsUit, XLSX.utils.encode_cell({ r: 0, c }), S.banner);
-  styleCell(wsUit, 'J1', S.bannerRight);
-  for (let c = 0; c < NCOLS_U; c++)
-    styleCell(wsUit, XLSX.utils.encode_cell({ r: 1, c }), S.subtitle);
-  for (let r = 3; r <= 6; r++) {
-    styleCell(wsUit, XLSX.utils.encode_cell({ r, c: 0 }), S.infoLabel);
-    for (let c = 1; c < NCOLS_U; c++)
-      styleCell(wsUit, XLSX.utils.encode_cell({ r, c }), S.infoValue);
-  }
-  for (let c = 0; c < NCOLS_U; c++)
-    styleCell(wsUit, XLSX.utils.encode_cell({ r: 8, c }), S.sectionTitle);
-  for (let c = 0; c < NCOLS_U; c++)
-    styleCell(wsUit, XLSX.utils.encode_cell({ r: 9, c }), S.tableHeader);
-  for (let i = 0; i < complexes.length; i++) {
-    const r = 10 + i;
     const alt = i % 2 === 1;
-    for (let c = 0; c < NCOLS_U - 1; c++)
-      styleCell(wsUit, XLSX.utils.encode_cell({ r, c }), alt ? S.cellTextAlt : S.cellText);
-    styleCell(wsUit, XLSX.utils.encode_cell({ r, c: NCOLS_U - 1 }),
-              alt ? S.cellIntAlt : S.cellInt);
-  }
-  const totRowU = 10 + complexes.length;
-  for (let c = 0; c < NCOLS_U - 1; c++)
-    styleCell(wsUit, XLSX.utils.encode_cell({ r: totRowU, c }), S.totalText);
-  styleCell(wsUit, XLSX.utils.encode_cell({ r: totRowU, c: NCOLS_U - 1 }), S.totalInt);
+    styleRange(wsUit, r, 1, NCOLS_U - 1, alt ? S.cellTextAlt : S.cellText);
+    applyStyle(wsUit.getCell(r, NCOLS_U), alt ? S.cellIntAlt : S.cellInt);
+  });
 
-  XLSX.utils.book_append_sheet(wb, wsUit, 'Uitgangspunten');
+  // Total row
+  const totRowU = 11 + complexes.length;
+  setRowValues(wsUit, totRowU, ['Totaal', '', '', '', '', '', '', '', '', totalVHE]);
+  styleRange(wsUit, totRowU, 1, NCOLS_U - 1, S.totalText);
+  applyStyle(wsUit.getCell(totRowU, NCOLS_U), S.totalInt);
+
+  wsUit.views = [{ state: 'frozen', xSplit: 0, ySplit: 10 }];
 
   // ============================================
   // BLAD 2: Prijs
   // ============================================
   const NCOLS_P = 7;
-  const prijsRows = [
-    ['nijver', '', '', '', '', '', today],
-    ['Order Export — Budget per complex'],
-    [],
-    ['Corporatie', corpName],
-    ['Order code', orderCode],
-    ['Order auteur', authorName],
-    ['E-mail', authorEmail],
-    [],
-    ['Budget per categorie (NL-SfB)'],
-    [
-      'Categorie', 'Totaal budget', 'Investering', 'Onderhoud',
-      'Budget / VHE', 'Investering / VHE', 'Onderhoud / VHE',
-    ],
+  const wsPrijs = wb.addWorksheet('Prijs');
+  wsPrijs.columns = [
+    { width: 28 }, { width: 18 }, { width: 24 }, { width: 24 },
+    { width: 18 }, { width: 28 }, { width: 28 },
   ];
 
-  const subHeaderRows = [];
-  const dataRowsInfo = [];
+  // Row 1: banner
+  setRowValues(wsPrijs, 1, ['', '', '', '', '', '', today]);
+  wsPrijs.getRow(1).height = 40;
+  wsPrijs.mergeCells(1, 1, 1, NCOLS_P - 1);
+  styleRange(wsPrijs, 1, 1, NCOLS_P - 1, S.banner);
+  applyStyle(wsPrijs.getCell(1, NCOLS_P), S.bannerRight);
+  wsPrijs.addImage(logoId, { tl: LOGO_TL, ext: LOGO_EXT });
 
+  // Row 2: subtitle
+  setRowValues(wsPrijs, 2, ['Order Export — Budget per complex']);
+  wsPrijs.getRow(2).height = 24;
+  wsPrijs.mergeCells(2, 1, 2, NCOLS_P);
+  styleRange(wsPrijs, 2, 1, NCOLS_P, S.subtitle);
+
+  // Rows 4-7: info block
+  infoRows.forEach((vals, i) => {
+    const r = 4 + i;
+    setRowValues(wsPrijs, r, vals);
+    wsPrijs.mergeCells(r, 2, r, NCOLS_P);
+    applyStyle(wsPrijs.getCell(r, 1), S.infoLabel);
+    styleRange(wsPrijs, r, 2, NCOLS_P, S.infoValue);
+  });
+
+  // Row 9: section title
+  setRowValues(wsPrijs, 9, ['Budget per categorie (NL-SfB)']);
+  wsPrijs.mergeCells(9, 1, 9, NCOLS_P);
+  styleRange(wsPrijs, 9, 1, NCOLS_P, S.sectionTitle);
+
+  // Row 10: table header
+  setRowValues(wsPrijs, 10, [
+    'Categorie', 'Totaal budget', 'Investering', 'Onderhoud',
+    'Budget / VHE', 'Investering / VHE', 'Onderhoud / VHE',
+  ]);
+  wsPrijs.getRow(10).height = 36;
+  styleRange(wsPrijs, 10, 1, NCOLS_P, S.tableHeader);
+
+  // Per-complex sections
+  let cursor = 11;
   for (const c of complexes) {
     const complexCode = stripCorpSuffix(c.externalComplexId || c['calculation.item.complex']);
     const totalPrice = parseFloat(c['calculation.offer.totalPrice']) || 0;
     const pricePerAsset = parseFloat(c['calculation.offer.totalPricePerAsset']) || 0;
     const vhe = pricePerAsset > 0 ? Math.round(totalPrice / pricePerAsset) : 0;
 
-    prijsRows.push([`Complex ${complexCode}  ·  ${vhe} VHE`]);
-    subHeaderRows.push(prijsRows.length - 1);
+    // Sub-header row spanning all columns
+    setRowValues(wsPrijs, cursor, [`Complex ${complexCode}  ·  ${vhe} VHE`]);
+    wsPrijs.mergeCells(cursor, 1, cursor, NCOLS_P);
+    styleRange(wsPrijs, cursor, 1, NCOLS_P, S.complexHeader);
+    cursor++;
 
     const cats = extractCategories(c);
     let altIdx = 0;
     for (const cat of CATEGORIES) {
       if (!cats[cat]) continue;
       const { total, inv, maint } = cats[cat];
-      prijsRows.push([
+      setRowValues(wsPrijs, cursor, [
         cat, total, inv, maint,
         vhe > 0 ? total / vhe : 0,
         vhe > 0 ? inv / vhe : 0,
         vhe > 0 ? maint / vhe : 0,
       ]);
-      dataRowsInfo.push({ r: prijsRows.length - 1, alt: altIdx % 2 === 1 });
+      const alt = altIdx % 2 === 1;
+      applyStyle(wsPrijs.getCell(cursor, 1), alt ? S.cellTextAlt : S.cellText);
+      styleRange(wsPrijs, cursor, 2, NCOLS_P, alt ? S.cellNumAlt : S.cellNum);
+      cursor++;
       altIdx++;
     }
   }
@@ -418,65 +457,16 @@ function buildWorkbook({ project, complexes, corporationName }) {
     const tpa = parseFloat(c['calculation.offer.totalPricePerAsset']) || 0;
     grandVHE += tpa > 0 ? Math.round(tp / tpa) : 0;
   }
-  prijsRows.push([
+  setRowValues(wsPrijs, cursor, [
     'TOTAAL', grandTotal, grandInv, grandMaint,
     grandVHE > 0 ? grandTotal / grandVHE : 0,
     grandVHE > 0 ? grandInv / grandVHE : 0,
     grandVHE > 0 ? grandMaint / grandVHE : 0,
   ]);
-  const totRowP = prijsRows.length - 1;
+  applyStyle(wsPrijs.getCell(cursor, 1), S.totalText);
+  styleRange(wsPrijs, cursor, 2, NCOLS_P, S.totalNum);
 
-  const wsPrijs = XLSX.utils.aoa_to_sheet(prijsRows);
-  wsPrijs['!cols'] = [
-    { wch: 28 }, { wch: 18 }, { wch: 24 }, { wch: 24 },
-    { wch: 18 }, { wch: 28 }, { wch: 28 },
-  ];
-  wsPrijs['!rows'] = [];
-  wsPrijs['!rows'][0] = { hpt: 40 };
-  wsPrijs['!rows'][1] = { hpt: 24 };
-  wsPrijs['!rows'][9] = { hpt: 36 };
-  wsPrijs['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: NCOLS_P - 2 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: NCOLS_P - 1 } },
-    { s: { r: 3, c: 1 }, e: { r: 3, c: NCOLS_P - 1 } },
-    { s: { r: 4, c: 1 }, e: { r: 4, c: NCOLS_P - 1 } },
-    { s: { r: 5, c: 1 }, e: { r: 5, c: NCOLS_P - 1 } },
-    { s: { r: 6, c: 1 }, e: { r: 6, c: NCOLS_P - 1 } },
-    { s: { r: 8, c: 0 }, e: { r: 8, c: NCOLS_P - 1 } },
-  ];
-  subHeaderRows.forEach(rIdx => {
-    wsPrijs['!merges'].push({ s: { r: rIdx, c: 0 }, e: { r: rIdx, c: NCOLS_P - 1 } });
-  });
-  wsPrijs['!freeze'] = { xSplit: 0, ySplit: 10 };
-
-  for (let c = 0; c < NCOLS_P - 1; c++)
-    styleCell(wsPrijs, XLSX.utils.encode_cell({ r: 0, c }), S.banner);
-  styleCell(wsPrijs, XLSX.utils.encode_cell({ r: 0, c: NCOLS_P - 1 }), S.bannerRight);
-  for (let c = 0; c < NCOLS_P; c++)
-    styleCell(wsPrijs, XLSX.utils.encode_cell({ r: 1, c }), S.subtitle);
-  for (let r = 3; r <= 6; r++) {
-    styleCell(wsPrijs, XLSX.utils.encode_cell({ r, c: 0 }), S.infoLabel);
-    for (let c = 1; c < NCOLS_P; c++)
-      styleCell(wsPrijs, XLSX.utils.encode_cell({ r, c }), S.infoValue);
-  }
-  for (let c = 0; c < NCOLS_P; c++)
-    styleCell(wsPrijs, XLSX.utils.encode_cell({ r: 8, c }), S.sectionTitle);
-  for (let c = 0; c < NCOLS_P; c++)
-    styleCell(wsPrijs, XLSX.utils.encode_cell({ r: 9, c }), S.tableHeader);
-  for (const rIdx of subHeaderRows) {
-    for (let c = 0; c < NCOLS_P; c++)
-      styleCell(wsPrijs, XLSX.utils.encode_cell({ r: rIdx, c }), S.complexHeader);
-  }
-  for (const { r, alt } of dataRowsInfo) {
-    styleCell(wsPrijs, XLSX.utils.encode_cell({ r, c: 0 }), alt ? S.cellTextAlt : S.cellText);
-    for (let c = 1; c < NCOLS_P; c++)
-      styleCell(wsPrijs, XLSX.utils.encode_cell({ r, c }), alt ? S.cellNumAlt : S.cellNum);
-  }
-  styleCell(wsPrijs, XLSX.utils.encode_cell({ r: totRowP, c: 0 }), S.totalText);
-  for (let c = 1; c < NCOLS_P; c++)
-    styleCell(wsPrijs, XLSX.utils.encode_cell({ r: totRowP, c }), S.totalNum);
-
-  XLSX.utils.book_append_sheet(wb, wsPrijs, 'Prijs');
+  wsPrijs.views = [{ state: 'frozen', xSplit: 0, ySplit: 10 }];
 
   return wb;
 }
@@ -644,11 +634,11 @@ export default function App() {
 
   const canGenerate = project && complexes;
 
-  const generate = () => {
+  const generate = async () => {
     if (!canGenerate) return;
     setIsGenerating(true); setError(null);
     try {
-      const wb = buildWorkbook({ project, complexes, corporationName: corpName });
+      const wb = await buildWorkbook({ project, complexes, corporationName: corpName });
       const today = new Date();
       const dd = String(today.getDate()).padStart(2, '0');
       const mm = String(today.getMonth() + 1).padStart(2, '0');
@@ -656,7 +646,16 @@ export default function App() {
       const author = [project['author.firstName'], project['author.lastName']]
         .filter(Boolean).join('_');
       const filename = `${dd}-${mm}-${yy}_${author || 'Export'}_Nijver_Order_Export.xlsx`;
-      XLSX.writeFile(wb, filename);
+      const buf = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buf], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
       setLastGenerated({ filename, when: new Date() });
     } catch (e) {
       console.error(e);

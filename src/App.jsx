@@ -262,6 +262,15 @@ const orNee = (v) => {
   if (!s || s.toLowerCase() === 'null') return 'Nee';
   return s.replace(/_/g, ' ');
 };
+// Boolean-veld ('true'/'false'/null) → 'Ja'/'Nee'
+const boolToJaNee = (v) => {
+  if (v == null) return 'Nee';
+  const s = String(v).trim().toLowerCase();
+  return (s === 'true' || s === 'ja' || s === 'yes' || s === '1') ? 'Ja' : 'Nee';
+};
+// Lees veld uit nieuwe pad (specifications.X) of val terug op oude pad (X)
+const itemField = (c, name) =>
+  c[`calculation.item.specifications.${name}`] ?? c[`calculation.item.${name}`];
 
 // ============================================================================
 // buildWorkbook — genereert beide bladen (Uitgangspunten + Prijs)
@@ -300,15 +309,15 @@ async function buildWorkbook({ project, complexes, corporationName }) {
   // ============================================
   // BLAD 1: Uitgangspunten
   // ============================================
-  const NCOLS_U = 10;
+  const NCOLS_U = 9;
   const wsUit = wb.addWorksheet('Uitgangspunten');
   wsUit.columns = [
-    { width: 22 }, { width: 18 }, { width: 22 }, { width: 24 }, { width: 20 },
+    { width: 22 }, { width: 18 }, { width: 22 }, { width: 20 },
     { width: 18 }, { width: 22 }, { width: 22 }, { width: 22 }, { width: 14 },
   ];
 
   // Row 1: banner (logo embedded, date right-aligned)
-  setRowValues(wsUit, 1, ['', '', '', '', '', '', '', '', '', today]);
+  setRowValues(wsUit, 1, ['', '', '', '', '', '', '', '', today]);
   wsUit.getRow(1).height = 40;
   wsUit.mergeCells(1, 1, 1, NCOLS_U - 1);
   styleRange(wsUit, 1, 1, NCOLS_U - 1, S.banner);
@@ -343,7 +352,7 @@ async function buildWorkbook({ project, complexes, corporationName }) {
 
   // Row 10: table header
   setRowValues(wsUit, 10, [
-    'Complex Code', 'Systematiek', 'Onderdeel van selectie', 'Meest voorkomend label',
+    'Complex Code', 'Systematiek', 'Onderdeel van selectie',
     'Ambitie voor complex', 'Asbest verwacht?', 'Keuzes badkamer',
     'Keuzes keuken', 'Keuzes toilet', 'Aantal VHE',
   ]);
@@ -362,12 +371,12 @@ async function buildWorkbook({ project, complexes, corporationName }) {
     const strategyName = c['calculation.targetStrategyName'] || '';
     const systematiek = strategyName.replace(/^Breng\s+naar\s+(de\s+)?/i, '').trim() || strategyName;
     setRowValues(wsUit, r, [
-      complexCode, systematiek, 'Yes', '',
+      complexCode, systematiek, 'Yes',
       c['calculation.targetEnergyLabel'] || 'Nee',
-      'Nee',
-      orNee(c['calculation.item.bathroom']),
-      orNee(c['calculation.item.kitchen']),
-      orNee(c['calculation.item.toilet']),
+      boolToJaNee(c['calculation.item.specifications.asbestos']),
+      orNee(itemField(c, 'bathroom')),
+      orNee(itemField(c, 'kitchen')),
+      orNee(itemField(c, 'toilet')),
       vhe,
     ]);
     const alt = i % 2 === 1;
@@ -377,7 +386,7 @@ async function buildWorkbook({ project, complexes, corporationName }) {
 
   // Total row
   const totRowU = 11 + complexes.length;
-  setRowValues(wsUit, totRowU, ['Totaal', '', '', '', '', '', '', '', '', totalVHE]);
+  setRowValues(wsUit, totRowU, ['Totaal', '', '', '', '', '', '', '', totalVHE]);
   styleRange(wsUit, totRowU, 1, NCOLS_U - 1, S.totalText);
   applyStyle(wsUit.getCell(totRowU, NCOLS_U), S.totalInt);
 

@@ -149,6 +149,13 @@ const S = {
     border: border(),
     numFmt: NUMFMT_EURO,
   },
+  cellNumGray: {
+    fill: fill(XC.altRow),
+    font: { size: 10, color: { argb: XC.navy }, name: XFONT },
+    alignment: { horizontal: 'right', vertical: 'middle', indent: 1 },
+    border: border(),
+    numFmt: NUMFMT_EURO,
+  },
   cellInt: {
     fill: fill(XC.white),
     font: { size: 10, color: { argb: XC.navy }, name: XFONT },
@@ -248,6 +255,13 @@ const formatDateDutch = (d = new Date()) => {
   return `${d.getDate()} ${m[d.getMonth()]} ${d.getFullYear()}`;
 };
 const underscoreToSpace = (v) => !v ? '' : String(v).replace(/_/g, ' ');
+// Fallback voor ontbrekende JSON-info: lege/null-waarden worden 'Nee'.
+const orNee = (v) => {
+  if (v == null) return 'Nee';
+  const s = String(v).trim();
+  if (!s || s.toLowerCase() === 'null') return 'Nee';
+  return s.replace(/_/g, ' ');
+};
 
 // ============================================================================
 // buildWorkbook — genereert beide bladen (Uitgangspunten + Prijs)
@@ -348,11 +362,12 @@ async function buildWorkbook({ project, complexes, corporationName }) {
     const strategyName = c['calculation.targetStrategyName'] || '';
     const systematiek = strategyName.replace(/^Breng\s+naar\s+(de\s+)?/i, '').trim() || strategyName;
     setRowValues(wsUit, r, [
-      complexCode, systematiek, 'Yes', '—',
-      c['calculation.targetEnergyLabel'] || '', '—',
-      underscoreToSpace(c['calculation.item.bathroom']),
-      underscoreToSpace(c['calculation.item.kitchen']),
-      underscoreToSpace(c['calculation.item.toilet']),
+      complexCode, systematiek, 'Yes', '',
+      c['calculation.targetEnergyLabel'] || 'Nee',
+      'Nee',
+      orNee(c['calculation.item.bathroom']),
+      orNee(c['calculation.item.kitchen']),
+      orNee(c['calculation.item.toilet']),
       vhe,
     ]);
     const alt = i % 2 === 1;
@@ -429,7 +444,6 @@ async function buildWorkbook({ project, complexes, corporationName }) {
     cursor++;
 
     const cats = extractCategories(c);
-    let altIdx = 0;
     for (const cat of CATEGORIES) {
       if (!cats[cat]) continue;
       const { total, inv, maint } = cats[cat];
@@ -439,11 +453,16 @@ async function buildWorkbook({ project, complexes, corporationName }) {
         vhe > 0 ? inv / vhe : 0,
         vhe > 0 ? maint / vhe : 0,
       ]);
-      const alt = altIdx % 2 === 1;
-      applyStyle(wsPrijs.getCell(cursor, 1), alt ? S.cellTextAlt : S.cellText);
-      styleRange(wsPrijs, cursor, 2, NCOLS_P, alt ? S.cellNumAlt : S.cellNum);
+      // Per-kolom shading: B (Totaal budget) + E (Budget/VHE) zijn de
+      // hoofdsommen → wit. C, D, F, G zijn de breakdown → lichtgrijs.
+      applyStyle(wsPrijs.getCell(cursor, 1), S.cellText);     // A Categorie
+      applyStyle(wsPrijs.getCell(cursor, 2), S.cellNum);      // B Totaal
+      applyStyle(wsPrijs.getCell(cursor, 3), S.cellNumGray);  // C Investering
+      applyStyle(wsPrijs.getCell(cursor, 4), S.cellNumGray);  // D Onderhoud
+      applyStyle(wsPrijs.getCell(cursor, 5), S.cellNum);      // E Budget/VHE
+      applyStyle(wsPrijs.getCell(cursor, 6), S.cellNumGray);  // F Inv/VHE
+      applyStyle(wsPrijs.getCell(cursor, 7), S.cellNumGray);  // G Ond/VHE
       cursor++;
-      altIdx++;
     }
   }
 

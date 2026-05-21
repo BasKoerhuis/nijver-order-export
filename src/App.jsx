@@ -76,7 +76,8 @@ const XC = {
   borderGray: 'FFE2E8F0',
 };
 const XFONT = 'Arial';
-const NUMFMT_EURO = '€ #,##0.00;[Red]-€ #,##0.00;-';
+const NUMFMT_EURO = '€ #,##0;[Red]-€ #,##0;-';
+const GRAY_TEXT = 'FF475569'; // slate-600, leesbaar op lichtgrijze achtergrond
 
 const fill = (argb) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
 const border = () => {
@@ -151,7 +152,7 @@ const S = {
   },
   cellNumGray: {
     fill: fill(XC.altRow),
-    font: { size: 10, color: { argb: XC.navy }, name: XFONT },
+    font: { size: 10, color: { argb: GRAY_TEXT }, name: XFONT },
     alignment: { horizontal: 'right', vertical: 'middle', indent: 1 },
     border: border(),
     numFmt: NUMFMT_EURO,

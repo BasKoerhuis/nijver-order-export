@@ -137,7 +137,7 @@ const S = {
   },
   cellNum: {
     fill: fill(XC.white),
-    font: { size: 10, color: { argb: XC.navy }, name: XFONT },
+    font: { bold: true, size: 10, color: { argb: XC.navy }, name: XFONT },
     alignment: { horizontal: 'right', vertical: 'middle', indent: 1 },
     border: border(),
     numFmt: NUMFMT_EURO,
@@ -371,7 +371,7 @@ async function buildWorkbook({ project, complexes, corporationName }) {
     const strategyName = c['calculation.targetStrategyName'] || '';
     const systematiek = strategyName.replace(/^Breng\s+naar\s+(de\s+)?/i, '').trim() || strategyName;
     setRowValues(wsUit, r, [
-      complexCode, systematiek, 'Yes',
+      complexCode, systematiek, 'Ja',
       c['calculation.targetEnergyLabel'] || 'Nee',
       boolToJaNee(c['calculation.item.specifications.asbestos']),
       orNee(itemField(c, 'bathroom')),

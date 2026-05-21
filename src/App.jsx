@@ -190,6 +190,13 @@ const S = {
     border: border(),
     numFmt: NUMFMT_EURO,
   },
+  totalNumGray: {
+    fill: fill(XC.turquoise),
+    font: { bold: true, size: 12, color: { argb: GRAY_TEXT }, name: XFONT },
+    alignment: { horizontal: 'right', vertical: 'middle', indent: 1 },
+    border: border(),
+    numFmt: NUMFMT_EURO,
+  },
   totalInt: {
     fill: fill(XC.turquoise),
     font: { bold: true, size: 12, color: { argb: XC.navy }, name: XFONT },
@@ -493,7 +500,12 @@ async function buildWorkbook({ project, complexes, corporationName }) {
     grandVHE > 0 ? grandMaint / grandVHE : 0,
   ]);
   applyStyle(wsPrijs.getCell(cursor, 1), S.totalText);
-  styleRange(wsPrijs, cursor, 2, NCOLS_P, S.totalNum);
+  applyStyle(wsPrijs.getCell(cursor, 2), S.totalNum);      // B Totaal budget
+  applyStyle(wsPrijs.getCell(cursor, 3), S.totalNumGray);  // C Investering
+  applyStyle(wsPrijs.getCell(cursor, 4), S.totalNumGray);  // D Onderhoud
+  applyStyle(wsPrijs.getCell(cursor, 5), S.totalNum);      // E Budget/VHE
+  applyStyle(wsPrijs.getCell(cursor, 6), S.totalNumGray);  // F Inv/VHE
+  applyStyle(wsPrijs.getCell(cursor, 7), S.totalNumGray);  // G Ond/VHE
 
   wsPrijs.views = [{ state: 'frozen', xSplit: 0, ySplit: 10 }];
 

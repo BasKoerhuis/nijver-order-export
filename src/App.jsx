@@ -77,7 +77,7 @@ const XC = {
 };
 const XFONT = 'Arial';
 const NUMFMT_EURO = '€ #,##0;[Red]-€ #,##0;-';
-const GRAY_TEXT = 'FF475569'; // slate-600, leesbaar op lichtgrijze achtergrond
+const GRAY_TEXT = 'FF64748B'; // slate-500, leesbaar op lichtgrijze achtergrond
 
 const fill = (argb) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
 const border = () => {
